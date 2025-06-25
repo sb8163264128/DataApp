@@ -16,9 +16,9 @@ data class DeviceSpecificData(
     val color: String? = null,
 
     @SerializedName("capacity")
-    val capacity: String? = null, // e.g., "256 GB"
+    val capacity: String? = null,
 
-    @SerializedName("price") // Assuming it's a number
+    @SerializedName("price")
     val price: Double? = null,
 
     @SerializedName("generation")
@@ -27,7 +27,6 @@ data class DeviceSpecificData(
     @SerializedName("year")
     val year: Int? = null,
 
-    // If the API uses keys with spaces or special characters:
     @SerializedName("CPU model")
     val cpuModel: String? = null,
 
@@ -40,18 +39,18 @@ data class DeviceSpecificData(
     @SerializedName("Case Size")
     val caseSize: String? = null,
 
-    @SerializedName("Color") // Alternative for the Beats example
-    val altColor: String? = null, // If this is semantically the same as 'color', pick one canonical name.
+    @SerializedName("Color")
+    val altColor: String? = null,
 
     @SerializedName("Description")
     val description: String? = null,
 
     @SerializedName("Screen size")
-    val screenSize: Double? = null, // Assuming it's a numeric value like 13.3
+    val screenSize: Double? = null,
 
     @SerializedName("capacity GB")
     val capacityGB: String? = null,
 
-    @SerializedName("Price") // For the capitalized version if "price" doesn't catch it.
-    val altPrice: String? = null // Price from iPad Air is "419.99"
+    @SerializedName("Price")
+    val altPrice: String? = null
 )

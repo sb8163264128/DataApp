@@ -4,7 +4,6 @@ import com.unplugged.dataapp.DeviceRepository
 import com.unplugged.dataapp.DeviceRepositoryImpl
 import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton

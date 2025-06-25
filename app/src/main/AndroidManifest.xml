@@ -40,18 +40,6 @@
             </intent-filter>
         </activity>
 
-        <receiver
-            android:name=".receivers.DataRequestReceiver"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="com.unplugged.dataapp.permission.SEND_DATA_REQUESTS">
-            <intent-filter>
-                <action android:name="com.unplugged.dataapp.ACTION_REQUEST_DEVICE_LIST" />
-                <action android:name="com.unplugged.dataapp.ACTION_REQUEST_DEVICE_DETAILS" />
-            </intent-filter>
-        </receiver>
-
-
     </application>
 
 </manifest>
