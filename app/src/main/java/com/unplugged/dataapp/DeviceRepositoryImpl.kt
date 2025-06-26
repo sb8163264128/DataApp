@@ -1,10 +1,14 @@
 package com.unplugged.dataapp
 
-import android.content.Context
+import android.util.Log
+import com.unplugged.dataapp.data.mapper.toDeviceEntityList
+import com.unplugged.dataapp.data.mapper.toDeviceItemList
+import com.unplugged.dataapp.database.dao.DeviceDao
 import com.unplugged.dataapp.network.RestfulApiService
 import com.unplugged.dataapp.network.model.DeviceDetails
 import com.unplugged.dataapp.network.model.DeviceListItem
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -12,33 +16,91 @@ import javax.inject.Singleton
 @Singleton
 class DeviceRepositoryImpl @Inject constructor(
     private val apiService: RestfulApiService,
-    @ApplicationContext private val context: Context
+    private val deviceDao: DeviceDao
 ) : DeviceRepository {
 
-    override suspend fun getDeviceListFromApi(): DataResult<List<DeviceListItem>> {
-        try {
-            val response = apiService.getDeviceList()
+    private val TAG = "DeviceRepositoryImpl"
 
-            if (response.isSuccessful) {
-                val deviceList = response.body()
-                if (deviceList != null) {
-                    return DataResult.Success(deviceList)
+    override suspend fun getDeviceList(forceRefresh: Boolean): DataResult<List<DeviceListItem>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val localDeviceCount = deviceDao.getCount()
+                val shouldFetchFromNetwork = forceRefresh || localDeviceCount == 0
+
+                if (shouldFetchFromNetwork) {
+                    // Attempt to fetch from network, return local data if it fails
+                    try {
+                        val response = apiService.getDeviceList()
+                        if (response.isSuccessful) {
+                            val networkDeviceList = response.body()
+                            if (networkDeviceList != null) {
+                                deviceDao.deleteAll()
+                                deviceDao.insertOrReplaceAll(networkDeviceList.toDeviceEntityList())
+                                // local DB is single source of truth
+                                val updatedLocalData = deviceDao.getAllDevices().toDeviceItemList()
+                                return@withContext DataResult.Success(updatedLocalData)
+                            } else {
+                                if (localDeviceCount > 0) {
+                                    val staleData = deviceDao.getAllDevices().toDeviceItemList()
+                                    Log.d(
+                                        TAG,
+                                        "API for getDeviceList returned successful response with null body. Returning stale data."
+                                    )
+                                    return@withContext DataResult.Success(staleData)
+                                } else {
+                                    return@withContext DataResult.Error(Exception("API returned successful response with null body, and no local data."))
+                                }
+                            }
+                        } else {
+                            val errorBody = response.errorBody()?.string() ?: "Unknown HTTP error"
+                            val errorMessage =
+                                "Network request failed: ${response.code()} - $errorBody"
+                            if (localDeviceCount > 0) {
+                                val staleData = deviceDao.getAllDevices().toDeviceItemList()
+                                Log.d(TAG, errorMessage + ". Returning stale data.")
+                                return@withContext DataResult.Success(staleData)
+                            } else {
+                                return@withContext DataResult.Error(Exception(errorMessage))
+                            }
+                        }
+                    } catch (e: IOException) {
+                        if (localDeviceCount > 0) {
+                            val staleData = deviceDao.getAllDevices().toDeviceItemList()
+                            Log.d(
+                                TAG,
+                                "Network IOException for getDeviceList: ${e.message}. Returning stale data."
+                            )
+                            return@withContext DataResult.Success(staleData)
+                        } else {
+                            return@withContext DataResult.Error(e)
+                        }
+                    } catch (e: Exception) {
+                        if (localDeviceCount > 0) {
+                            val staleData = deviceDao.getAllDevices().toDeviceItemList()
+                            Log.d(
+                                TAG,
+                                "Unexpected exception during network fetch for getDeviceList: ${e.message}. Returning stale data."
+                            )
+                            return@withContext DataResult.Success(staleData)
+                        } else {
+                            return@withContext DataResult.Error(e)
+                        }
+                    }
                 } else {
-                    return DataResult.Error(Exception("API returned successful response with null body."))
+                    val localData = deviceDao.getAllDevices().toDeviceItemList()
+                    return@withContext DataResult.Success(localData)
                 }
-            } else {
-                val errorBody = response.errorBody()?.string() ?: "Unknown HTTP error"
-                val errorMessage = "Network request failed: ${response.code()} - $errorBody"
-                return DataResult.Error(Exception(errorMessage))
+            } catch (e: Exception) {
+                Log.d(TAG, "Unexpected exception in getDeviceList: ${e.message}")
+                return@withContext DataResult.Error(e)
             }
-        } catch (e: IOException) {
-            return DataResult.Error(e)
-        } catch (e: Exception) {
-            return DataResult.Error(e)
         }
     }
 
-    override suspend fun getDeviceDetailsFromApi(deviceId: String): DataResult<DeviceDetails> {
+    override suspend fun getDeviceDetails(
+        deviceId: String,
+        forceRefresh: Boolean
+    ): DataResult<DeviceDetails> {
         if (deviceId.isBlank()) {
             return DataResult.Error(IllegalArgumentException("Device ID cannot be blank."))
         }

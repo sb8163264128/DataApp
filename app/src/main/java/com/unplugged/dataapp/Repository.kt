@@ -9,6 +9,9 @@ sealed class DataResult<out T> {
 }
 
 interface DeviceRepository {
-    suspend fun getDeviceListFromApi(): DataResult<List<DeviceListItem>>
-    suspend fun getDeviceDetailsFromApi(deviceId: String): DataResult<DeviceDetails>
+    suspend fun getDeviceList(forceRefresh: Boolean = false): DataResult<List<DeviceListItem>>
+    suspend fun getDeviceDetails(
+        deviceId: String,
+        forceRefresh: Boolean = false
+    ): DataResult<DeviceDetails>
 }

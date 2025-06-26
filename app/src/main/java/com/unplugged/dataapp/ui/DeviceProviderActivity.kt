@@ -3,115 +3,141 @@ package com.unplugged.dataapp.ui
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.gson.Gson
 import com.unplugged.dataapp.DataResult
-import com.unplugged.dataapp.DeviceRepository
 import com.unplugged.dataapp.ipc.InterAppContracts
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 @AndroidEntryPoint
 class DeviceProviderActivity : AppCompatActivity() {
 
-    @Inject
-    lateinit var deviceRepository: DeviceRepository
-
-    @Inject
-    lateinit var gson: Gson
+    private val viewModel: DeviceProviderViewModel by viewModels()
+    private var currentDataJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        lifecycleScope.launch {
-            handleRequest()
+        handleIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        intent?.let {
+            handleIntent(it)
         }
     }
 
-    private suspend fun handleRequest() {
-        val requestType = intent.getStringExtra(InterAppContracts.REQUEST_TYPE_EXTRA)
-        val resultIntent = Intent()
+    private fun handleIntent(receivedIntent: Intent?) {
+        if (receivedIntent == null) {
+            if (currentDataJob == null || currentDataJob?.isActive == false) {
+                finish()
+            }
+            return
+        }
 
-        try {
-            when (requestType) {
-                InterAppContracts.REQUEST_DEVICE_LIST -> {
-                    val searchQuery = intent.getStringExtra(InterAppContracts.EXTRA_SEARCH_QUERY)
-                    when (val dataResult = deviceRepository.getDeviceListFromApi()) {
-                        is DataResult.Success -> {
-                            val list = if (searchQuery.isNullOrEmpty()) {
-                                dataResult.data
-                            } else {
-                                dataResult.data.filter {
-                                    it.name?.contains(searchQuery, true) ?: true
-                                }
-                            }
-                            val jsonDeviceList = gson.toJson(list)
+        val requestType = receivedIntent.getStringExtra(InterAppContracts.REQUEST_TYPE_EXTRA)
 
-                            resultIntent.putExtra(
-                                InterAppContracts.RESULT_EXTRA_DEVICE_LIST_JSON,
-                                jsonDeviceList
-                            )
-                            setResult(Activity.RESULT_OK, resultIntent)
-                        }
+        if (isRecognizedIpcRequest(requestType)) {
+            currentDataJob?.cancel()
+        } else {
+            if (currentDataJob == null || currentDataJob?.isActive == false) {
+                val resultIntent = Intent()
+                resultIntent.putExtra(
+                    InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
+                    "Received unrelated or unknown intent."
+                )
+                setResult(Activity.RESULT_CANCELED, resultIntent)
+                finish()
+            }
+            return
+        }
 
-                        is DataResult.Error -> {
-                            resultIntent.putExtra(
-                                InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
-                                dataResult.exception.message ?: "Error fetching device list"
-                            )
-                            setResult(Activity.RESULT_CANCELED, resultIntent)
-                        }
-                    }
-                }
+        currentDataJob = lifecycleScope.launch {
+            val resultIntent = Intent()
+            var activityResultCode = Activity.RESULT_CANCELED
 
-                InterAppContracts.REQUEST_DEVICE_DETAILS -> {
-                    val deviceId = intent.getStringExtra(InterAppContracts.EXTRA_DEVICE_ID)
-                    if (deviceId == null) {
-                        resultIntent.putExtra(
-                            InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
-                            "Device ID is missing"
-                        )
-                        setResult(Activity.RESULT_CANCELED, resultIntent)
-                    } else {
-                        when (val dataResult = deviceRepository.getDeviceDetailsFromApi(deviceId)) {
+            try {
+                when (requestType) {
+                    InterAppContracts.REQUEST_DEVICE_LIST -> {
+                        when (val dataResult = viewModel.fetchSerializedDeviceList(false)) {
                             is DataResult.Success -> {
-                                val jsonDeviceDetails = gson.toJson(dataResult.data)
                                 resultIntent.putExtra(
-                                    InterAppContracts.RESULT_EXTRA_DEVICE_DETAILS_JSON,
-                                    jsonDeviceDetails
+                                    InterAppContracts.RESULT_EXTRA_DEVICE_LIST_JSON,
+                                    dataResult.data
                                 )
-                                setResult(Activity.RESULT_OK, resultIntent)
+                                activityResultCode = Activity.RESULT_OK
                             }
 
                             is DataResult.Error -> {
                                 resultIntent.putExtra(
                                     InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
-                                    dataResult.exception.message ?: "Error fetching device details"
+                                    "Failed to fetch/serialize device list: ${dataResult.exception.message}"
                                 )
-                                setResult(Activity.RESULT_CANCELED, resultIntent)
+                            }
+                        }
+                    }
+
+                    InterAppContracts.REQUEST_DEVICE_DETAILS -> {
+                        val deviceId =
+                            receivedIntent.getStringExtra(InterAppContracts.EXTRA_DEVICE_ID)
+
+                        if (deviceId.isNullOrBlank()) {
+                            resultIntent.putExtra(
+                                InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
+                                "Device ID not provided or is blank for details request."
+                            )
+                        } else {
+                            when (val dataResult =
+                                viewModel.fetchSerializedDeviceDetails(deviceId, false)) {
+                                is DataResult.Success -> {
+                                    resultIntent.putExtra(
+                                        InterAppContracts.RESULT_EXTRA_DEVICE_DETAILS_JSON,
+                                        dataResult.data
+                                    )
+                                    activityResultCode = Activity.RESULT_OK
+                                }
+
+                                is DataResult.Error -> {
+                                    resultIntent.putExtra(
+                                        InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
+                                        "Failed to fetch/serialize device details for ID $deviceId: ${dataResult.exception.message}"
+                                    )
+                                }
                             }
                         }
                     }
                 }
-
-                else -> {
-                    resultIntent.putExtra(
-                        InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
-                        "Unknown request type"
-                    )
-                    setResult(Activity.RESULT_CANCELED, resultIntent)
+            } catch (e: Exception) {
+                if (e is CancellationException) {
+                    throw e
+                }
+                resultIntent.putExtra(
+                    InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
+                    "Internal error in DataApp: ${e.message}"
+                )
+                setResult(Activity.RESULT_CANCELED, resultIntent)
+            } finally {
+                if (this.isActive && currentDataJob == this.coroutineContext[Job]) {
+                    setResult(activityResultCode, resultIntent)
+                    finish()
                 }
             }
-        } catch (e: Exception) {
-            resultIntent.putExtra(
-                InterAppContracts.RESULT_EXTRA_ERROR_MESSAGE,
-                "Internal error in DataApp: ${e.message}"
-            )
-            setResult(Activity.RESULT_CANCELED, resultIntent)
-        } finally {
-            finish()
         }
+    }
+
+    private fun isRecognizedIpcRequest(requestType: String?): Boolean {
+        return requestType == InterAppContracts.REQUEST_DEVICE_LIST ||
+                requestType == InterAppContracts.REQUEST_DEVICE_DETAILS
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        currentDataJob?.cancel()
     }
 }

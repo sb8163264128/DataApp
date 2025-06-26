@@ -2,9 +2,10 @@ package com.unplugged.dataapp.network.model
 
 import com.google.gson.annotations.SerializedName
 
+// Used for API calls and IPC both
 data class DeviceDetails(
     @SerializedName("id")
-    val id: String?,
+    val id: String,
     @SerializedName("name")
     val name: String?,
     @SerializedName("data")
