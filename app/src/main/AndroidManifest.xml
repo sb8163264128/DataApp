@@ -3,8 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <permission
-        android:name="com.unplugged.dataapp.permission.ACCESS_DEVICE_DATA_PROVIDER"
-        android:label="Access DataApp's Device Data Provider"
+        android:name="com.unplugged.data.permission.ACCESS_DEVICE_LIST"
+        android:label="Access DataApp's Device List Activity"
         android:protectionLevel="signature" />
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -19,24 +19,19 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.DataApp"
-        tools:targetApi="31" >
+        tools:targetApi="31">
 
         <activity
-        android:name=".ui.LauncherActivity"
-        android:exported="true">
-        <intent-filter>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent-filter>
-        </activity>
-
-        <activity
-            android:name=".ui.DeviceProviderActivity"
+            android:name="com.unplugged.ui.DeviceListActivity"
             android:exported="true"
-            android:permission="com.unplugged.dataapp.permission.ACCESS_DEVICE_DATA_PROVIDER">
+            android:permission="com.unplugged.data.permission.ACCESS_DEVICE_LIST">
             <intent-filter>
-                <action android:name="com.unplugged.dataapp.action.PROVIDE_DEVICE_DATA" />
+                <action android:name="com.unplugged.ACTION_VIEW_DEVICE_LIST" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 

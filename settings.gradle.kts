@@ -21,4 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "DataApp"
 include(":app")
- 
+include(":data")
+include(":ui")
